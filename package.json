@@ -1,0 +1,30 @@
+{
+  "name": "elov-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "server",
+    "client"
+  ],
+  "scripts": {
+    "dev": "concurrently -k -p \"[{name}]\" -n \"SERVER,CLIENT\" -c \"cyan,magenta\" \"npm run server:dev\" \"npm run client:dev\"",
+    "server:dev": "npm --workspace=server run dev",
+    "client:dev": "npm --workspace=client run dev",
+    "build": "npm run db:generate && npm --workspace=server run build && npm --workspace=client run build",
+    "test": "npm --workspace=server test",
+    "evaluate": "npm --workspace=server run evaluate",
+    "db:generate": "npx prisma generate",
+    "db:push": "npx prisma db push",
+    "db:seed": "npx ts-node prisma/seed.ts"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "prisma": "^5.22.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.7.2"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.22.0",
+    "dotenv": "^16.4.7"
+  }
+}

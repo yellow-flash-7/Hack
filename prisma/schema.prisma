@@ -1,0 +1,315 @@
+// Prisma Schema for Evidence-First LLM Output Verifier (ELOV)
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  ADMIN
+  REVIEWER
+  AUDITOR
+  VIEWER
+}
+
+enum DocumentStatus {
+  PROCESSING
+  READY
+  FAILED
+}
+
+enum VerificationMode {
+  STRICT
+  BALANCED
+  EXPLORATORY
+}
+
+enum ClaimType {
+  FACTUAL
+  OPINION
+  RECOMMENDATION
+  PREDICTION
+  UNVERIFIABLE
+}
+
+enum ClaimImportance {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum ClaimStatus {
+  PENDING
+  SUPPORTED
+  CONTRADICTED
+  PARTIALLY_SUPPORTED
+  INSUFFICIENT_EVIDENCE
+  NEEDS_REVIEW
+}
+
+enum NliLabel {
+  ENTAILMENT
+  CONTRADICTION
+  NEUTRAL
+}
+
+enum ReviewTaskStatus {
+  PENDING
+  IN_REVIEW
+  APPROVED
+  REJECTED
+  MODIFIED
+}
+
+enum ReviewPriority {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+}
+
+model User {
+  id            String         @id @default(uuid())
+  email         String         @unique
+  name          String
+  role          Role           @default(REVIEWER)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  reviewTasks   ReviewTask[]
+  reviewActions ReviewAction[]
+
+  @@map("users")
+}
+
+model Document {
+  id           String          @id @default(uuid())
+  title        String
+  filename     String
+  originalName String
+  mimeType     String
+  fileSize     Int
+  pageCount    Int             @default(1)
+  sourceUrl    String?
+  hash         String          @unique
+  status       DocumentStatus  @default(READY)
+  errorMessage String?
+  metadata     Json?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  chunks    DocumentChunk[]
+  citations Citation[]
+
+  @@map("documents")
+}
+
+model DocumentChunk {
+  id             String   @id @default(uuid())
+  documentId     String
+  chunkIndex     Int
+  pageNumber     Int      @default(1)
+  sectionHeading String?
+  content        String   @db.Text
+  charCount      Int
+  tokenCount     Int
+  embedding      Float[]  @default([])
+  metadata       Json?
+  createdAt      DateTime @default(now())
+
+  document      Document        @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  evidenceItems EvidenceItem[]
+
+  @@index([documentId])
+  @@index([pageNumber])
+  @@map("document_chunks")
+}
+
+model VerificationRun {
+  id                       String           @id @default(uuid())
+  title                    String?
+  rawAnswer                String           @db.Text
+  mode                     VerificationMode @default(BALANCED)
+  status                   String           @default("COMPLETED")
+  totalClaims              Int              @default(0)
+  supportedCount           Int              @default(0)
+  contradictedCount        Int              @default(0)
+  partiallySupportedCount  Int              @default(0)
+  insufficientCount        Int              @default(0)
+  needsReviewCount         Int              @default(0)
+  fabricatedCitationCount  Int              @default(0)
+  calibratedConfidence     Float            @default(0.0)
+  pipelineVersion          String           @default("1.0.0")
+  durationMs               Int              @default(0)
+  configSnapshot           Json?
+  metadata                 Json?
+  createdAt                DateTime         @default(now())
+  updatedAt                DateTime         @updatedAt
+
+  claims                Claim[]
+  citations             Citation[]
+  verificationDecisions VerificationDecision[]
+  reviewTasks           ReviewTask[]
+
+  @@index([createdAt])
+  @@map("verification_runs")
+}
+
+model Claim {
+  id                 String          @id @default(uuid())
+  verificationRunId  String
+  claimIndex         Int
+  originalText       String          @db.Text
+  normalizedText     String          @db.Text
+  claimType          ClaimType       @default(FACTUAL)
+  importance         ClaimImportance @default(HIGH)
+  requiredEvidence   String?         @db.Text
+  status             ClaimStatus     @default(PENDING)
+  calibratedScore    Float           @default(0.0)
+  reasoning          String?         @db.Text
+  createdAt          DateTime        @default(now())
+
+  verificationRun      VerificationRun        @relation(fields: [verificationRunId], references: [id], onDelete: Cascade)
+  citations            Citation[]
+  evidenceLinks        ClaimEvidence[]
+  verificationDecision VerificationDecision?
+  reviewTask           ReviewTask?
+
+  @@index([verificationRunId])
+  @@index([status])
+  @@map("claims")
+}
+
+model Citation {
+  id                String   @id @default(uuid())
+  verificationRunId String
+  claimId           String?
+  citationText      String
+  citedDocumentId   String?
+  citedPage         Int?
+  isValid           Boolean  @default(false)
+  isFabricated      Boolean  @default(false)
+  failureReason     String?
+  exactSourceQuote  String?  @db.Text
+  createdAt         DateTime @default(now())
+
+  verificationRun VerificationRun @relation(fields: [verificationRunId], references: [id], onDelete: Cascade)
+  claim           Claim?          @relation(fields: [claimId], references: [id], onDelete: SetNull)
+  document        Document?       @relation(fields: [citedDocumentId], references: [id], onDelete: SetNull)
+
+  @@index([verificationRunId])
+  @@index([claimId])
+  @@index([isFabricated])
+  @@map("citations")
+}
+
+model EvidenceItem {
+  id             String    @id @default(uuid())
+  chunkId        String
+  exactQuote     String    @db.Text
+  relevanceScore Float     @default(0.0)
+  nliLabel       NliLabel  @default(NEUTRAL)
+  nliConfidence  Float     @default(0.0)
+  reasoning      String?   @db.Text
+  createdAt      DateTime  @default(now())
+
+  chunk      DocumentChunk   @relation(fields: [chunkId], references: [id], onDelete: Cascade)
+  claimLinks ClaimEvidence[]
+
+  @@index([chunkId])
+  @@map("evidence_items")
+}
+
+model ClaimEvidence {
+  id             String   @id @default(uuid())
+  claimId        String
+  evidenceItemId String
+  relationType   String   @default("RETRIEVED")
+  weight         Float    @default(1.0)
+  createdAt      DateTime @default(now())
+
+  claim        Claim        @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  evidenceItem EvidenceItem @relation(fields: [evidenceItemId], references: [id], onDelete: Cascade)
+
+  @@unique([claimId, evidenceItemId])
+  @@index([claimId])
+  @@index([evidenceItemId])
+  @@map("claim_evidence")
+}
+
+model VerificationDecision {
+  id                 String      @id @default(uuid())
+  verificationRunId  String
+  claimId            String      @unique
+  finalStatus        ClaimStatus
+  calibratedScore    Float       @default(0.0)
+  uncertaintyFactors Json?
+  abstentionReason   String?     @db.Text
+  explanation        String?     @db.Text
+  contradictionInfo  Json?
+  createdAt          DateTime    @default(now())
+
+  verificationRun VerificationRun @relation(fields: [verificationRunId], references: [id], onDelete: Cascade)
+  claim           Claim           @relation(fields: [claimId], references: [id], onDelete: Cascade)
+
+  @@index([verificationRunId])
+  @@index([finalStatus])
+  @@map("verification_decisions")
+}
+
+model ReviewTask {
+  id                String           @id @default(uuid())
+  verificationRunId String
+  claimId           String           @unique
+  status            ReviewTaskStatus @default(PENDING)
+  priority          ReviewPriority   @default(MEDIUM)
+  reason            String           @db.Text
+  assignedToId      String?
+  createdAt         DateTime         @default(now())
+  resolvedAt        DateTime?
+
+  verificationRun VerificationRun @relation(fields: [verificationRunId], references: [id], onDelete: Cascade)
+  claim           Claim           @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  assignedTo      User?           @relation(fields: [assignedToId], references: [id], onDelete: SetNull)
+  actions         ReviewAction[]
+
+  @@index([verificationRunId])
+  @@index([status])
+  @@map("review_tasks")
+}
+
+model ReviewAction {
+  id             String      @id @default(uuid())
+  reviewTaskId   String
+  reviewerId     String?
+  actionType     String      // ACCEPT, REJECT, MODIFY, REQUEST_EVIDENCE
+  previousStatus ClaimStatus
+  newStatus      ClaimStatus
+  explanation    String      @db.Text
+  correctionText String?     @db.Text
+  createdAt      DateTime    @default(now())
+
+  reviewTask ReviewTask @relation(fields: [reviewTaskId], references: [id], onDelete: Cascade)
+  reviewer   User?      @relation(fields: [reviewerId], references: [id], onDelete: SetNull)
+
+  @@index([reviewTaskId])
+  @@map("review_actions")
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  entityType  String   // VERIFICATION_RUN, CLAIM, REVIEW_TASK, DOCUMENT
+  entityId    String
+  action      String   // CREATED, EVALUATED, REVIEWED, DELETED
+  performedBy String   @default("SYSTEM")
+  details     Json?
+  ipAddress   String?
+  timestamp   DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([timestamp])
+  @@map("audit_logs")
+}

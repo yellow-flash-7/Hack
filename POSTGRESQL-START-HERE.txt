@@ -1,0 +1,22 @@
+ELOV PostgreSQL source package
+
+Database: PostgreSQL only. Prisma is the application's TypeScript database client/ORM and is configured with provider = "postgresql"; it does not switch the project to another database.
+
+IMPORTANT SECURITY: .env was intentionally excluded because it contained a database password. Create your own .env from .env.example and update DATABASE_URL with your local PostgreSQL credentials.
+
+Windows quick start (PowerShell, from the folder containing package.json):
+1. npm install
+2. Copy-Item .env.example .env
+3. Edit .env and set DATABASE_URL, for example:
+   DATABASE_URL="postgresql://postgres:YOUR_PASSWORD@localhost:5432/elov_db?schema=public"
+4. Create database elov_db in PostgreSQL (pgAdmin or psql).
+5. npm run db:generate
+6. npm run db:push
+7. npm run db:seed
+8. npm run dev
+Open http://localhost:5173
+Health check: http://localhost:5001/api/health
+
+If a button fails, check the health endpoint first and inspect the SERVER terminal and browser DevTools > Network/Console.
+The included source includes a Windows run/fix guide. This source package excludes node_modules; npm install restores dependencies.
+Build/test verification has not been run against your own PostgreSQL instance in this packaging step.
