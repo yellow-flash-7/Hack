@@ -1,6 +1,6 @@
 > **Windows / VS Code troubleshooting:** See [FIXES-AND-RUN.md](./FIXES-AND-RUN.md) for the patched behavior and step-by-step run instructions.
 
-# Evidence-First LLM Output Verifier (ELOV)
+# Evidence-First LLM Output Verifier (ELOV) Created by Karthick V
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue.svg)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-18-cyan.svg)](https://reactjs.org/)
